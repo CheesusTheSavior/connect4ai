@@ -235,3 +235,31 @@ class ConnectFour:
           return "play"
         else:
           i -= 1
+
+  def ai_vs_ai(self, bot_1, bot_2, slow=False):
+    command = None
+    self.show()
+    if not hasattr(self, "player_names"):
+      pl1_name = bot_1.name
+      pl2_name = bot_2.name
+      self.player_names = [pl1_name, pl2_name]
+    while self.check_winner() == False and command != "stop":
+      if slow:
+        command = input("Enter 'stop' to stop. Enter anything or nothing to continue")
+      self.convert()
+
+      if self.turn == 1:
+        self.bot_turn(bot_1)
+      else:
+        self.bot_turn(bot_2)
+
+      self.show()
+      self.turn = next(self.turns)
+
+    if hasattr(self, "winner"):
+      print(f"The winner is {self.winner}!")
+    elif self.status == "tie":
+      print(f"The game has ended in a tie!")
+    else:
+      print(f"No winner yet.")
+
