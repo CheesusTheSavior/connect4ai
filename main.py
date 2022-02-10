@@ -1,5 +1,5 @@
-from neuralnetwork import *
 from connect4 import *
+from neuralnetwork import *
 
 game = ConnectFour()
 bot = GamBot()
