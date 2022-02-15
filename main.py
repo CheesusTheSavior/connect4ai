@@ -50,26 +50,31 @@ def new_generation(names_list, size=10, bot_df: pd.DataFrame = None):
     return bot_df
 
 
-def tournament(bot_df, hist_df=None):
+def tournament(bot_df, hist_df=None, verbose: bool = False):
     tour_df = bot_df[bot_df["status"] == "alive"]
-    games = list(combinations(tour_df.index, 2))
+    # We are playing back and forth --> each bot has to play first and second against each other bot
+    first_round_games = list(combinations(tour_df.index, 2))
+    second_round_games = [(el[1], el[0]) for el in first_round_games]
+    games = first_round_games + second_round_games
 
     if not isinstance(hist_df, pd.DataFrame):
         hist_df = pd.DataFrame()
-        round = 1
+        tour_round = 1
     else:
-        round = max(hist_df["round"])+1
+        tour_round = max(hist_df["round"])+1
 
+    print(f"Currently playing round {np.int(tour_round)}...")
     for game in games:
         # get bots
         bot_1 = tour_df.at[game[0], "bot"]
         bot_2 = tour_df.at[game[1], "bot"]
 
         # generate a connect4 instance
-        con4 = ConnectFour(f"{bot_1.name} vs {bot_2.name}")
+        con4 = ConnectFour(f"{bot_1.name} vs {bot_2.name}", verbose=False)
 
         # let the bots play against each other
-        print(f"{bot_1.name} is playing against {bot_2.name}!")
+        if verbose:
+            print(f"{bot_1.name} is playing against {bot_2.name}!")
         playtime = time.ctime(time.time())
         con4.ai_vs_ai(bot_1, bot_2)
 
@@ -77,24 +82,26 @@ def tournament(bot_df, hist_df=None):
         if con4.status == "finished":
             winner = con4.winner
             winner_name = bot_1.name if winner == 1 else bot_2.name
-            print(f"{winner_name} has won!")
+            if verbose:
+                print(f"{winner_name} has won!")
         elif con4.status == "tie":
             winner, winner_name = None, None
-            print(f"Wow! The game ended in a tie!")
+            if verbose:
+                print(f"Wow! The game ended in a tie!")
         else:
-            print("Something must have gone wrong...")
+            if verbose:
+                print("Something must have gone wrong...")
             winner, winner_name = None, None
 
         # write important data about the game to dict
         game_dict = dict(p1=game[0], p2=game[1], p1_name=bot_1.name, p2_name=bot_2.name, time=playtime, winner=winner,
-                         round=round)
+                         round=tour_round)
 
         # write dict to hist_df
         hist_df = hist_df.append(game_dict, ignore_index=True)
 
-        hist_df["p1"] = [int(x) for x in hist_df["p1"]]
-        hist_df["p2"] = [int(x) for x in hist_df["p2"]]
-        hist_df["winner"] = [int(x) for x in hist_df["winner"]]
+    hist_df["p1"] = [int(x) for x in hist_df["p1"]]
+    hist_df["p2"] = [int(x) for x in hist_df["p2"]]
 
     return hist_df
 
@@ -138,7 +145,8 @@ def calculate_scores(bot_df, hist_df):
     :param hist_df:
     :return:
     """
-    current_round = hist_df[hist_df["round"]==max(hist_df["round"])]
+    current_round = hist_df[hist_df["round"] == max(hist_df["round"])]
+    bot_df["score"] = 0
     for row in current_round.index:
         p1 = hist_df.at[row, "p1"]
         p2 = hist_df.at[row, "p2"]
@@ -180,20 +188,18 @@ def calculate_scores(bot_df, hist_df):
 
 
 def procreate(bot_df, procreation_quantity=10, names_list=None):
+    procreation_quantity = int(procreation_quantity)
     if names_list is None:
         names_list = names
-    bot_df = bot_df.sort_values(by="score", ascending=False)
-    bot_df["status"] = "deceased"
-    id_to_procreate = list(bot_df.head(procreation_quantity).index)
+    id_to_procreate = list(bot_df.head(np.int(procreation_quantity)).index)
     for survivor in id_to_procreate:
         bot_df.loc[survivor, "status"] = "alive"
 
-    to_procreate = list(bot_df.head(procreation_quantity)["bot"])
+    to_procreate = list(bot_df.head(np.int(procreation_quantity))["bot"])
     # generate randomized coupling from procreation quantity
     # make sure that each parent gets two children
     np.random.shuffle(to_procreate)
-    couples = [(to_procreate[i-1], to_procreate[i]) for i in range(len(to_procreate))]
-
+    couples = [[to_procreate.pop() for i in range(2)] for j in range(procreation_quantity)]
     gen = max(bot_df["gen"])+1
 
     # loop through couples
@@ -214,6 +220,59 @@ def procreate(bot_df, procreation_quantity=10, names_list=None):
         bot_df = bot_df.append(child_dict, ignore_index=True)
 
     return bot_df
+
+
+def reduce(bot_df, survivor_count, criterion="score"):
+    bot_df["status"] = "deceased"
+    to_survive = bot_df.sort_values(by=criterion, ascending=False).head(np.int(survivor_count))
+    to_survive["status"] = "alive"
+
+    bot_df.loc[to_survive.index, "status"] = to_survive["status"]
+
+    return bot_df
+
+
+def simulate(n_gens: int, gen_size, names_list, bot_df=None, slow: bool = False):
+    if bot_df:
+        i = max(bot_df["gen"])+1
+    else:
+        i = 1
+    max_gens = i + n_gens
+    try:
+        while i <= max_gens:
+            if i == 1:
+                bot_df = new_generation(names_list, gen_size*2)
+                hist_df = pd.DataFrame()
+                hist_df = tournament(bot_df)
+            else:
+                bot_df = procreate(bot_df, gen_size, names_list)
+                bot_df = reduce(bot_df, gen_size, "gen")
+                hist_df = tournament(bot_df, hist_df)
+
+            bot_df = calculate_scores(bot_df, hist_df)
+
+            bot_df = reduce(bot_df, gen_size, "score")
+
+            # show current bot_df and hist_df
+            with pd.option_context('display.max_rows',
+                                   None, 'display.max_columns', None):
+                print(f"After {i} generations, this is the current population:")
+                print(bot_df[bot_df["status"] == "alive"])
+            if slow:
+                with pd.option_context('display.max_rows',
+                                       None, 'display.max_columns', None):
+                    # insert here possibilities for plot generation
+                    show_game_hist = input("Want to see the game history? y/n")
+                    if show_game_hist == "y":
+                        print(hist_df)
+                    input("Press ENTER to continue")
+            i += 1
+
+    except KeyboardInterrupt:
+        return bot_df, hist_df
+
+    return bot_df, hist_df
+
 
 """
 Start procedure here

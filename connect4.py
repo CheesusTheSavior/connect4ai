@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
+import copy
 from itertools import cycle
 
 
 class ConnectFour:
 
-    def __init__(self, name=None, rows=6, cols=7):
+    def __init__(self, name=None, rows=6, cols=7, verbose : bool = True):
         if name:
             self.name = name
 
@@ -20,11 +21,13 @@ class ConnectFour:
         self.symbols = ["x", "o"]
         self.status = "start"
         self.end = False
+        self.verbose = verbose
 
     def show(self):
-        with pd.option_context('display.max_rows',
-                               None, 'display.max_columns', None):
-            print(self.game)
+        if self.verbose:
+            with pd.option_context('display.max_rows',
+                                   None, 'display.max_columns', None):
+                print(self.game)
 
     def take_turn(self):
         first_input = True
@@ -118,7 +121,7 @@ class ConnectFour:
                     diag2_4 = [True if x == cell_val else False for x in diagonal_cells2]
 
                 if all(right_4) or all(lower_4) or all(diag_4) or all(diag2_4):
-                    self.winner = self.symbols.index(cell_val) + 1
+                    self.winner = np.int(self.symbols.index(cell_val) + 1)
                     self.status = "finished"
                     return True
 
@@ -201,39 +204,56 @@ class ConnectFour:
         # let the bot calculate his turn
         bot_activation = list(bot.calculate(game_inputs))
         # play the column with the highest amplitude
-        #print(bot_activation)
-        bot_plays = [int(bot_activation.index(x)) + 1 for x in sorted(bot_activation, reverse=True)]
+        if self.verbose:
+            print(bot_activation)
+        pos_plays = list(self.game_cols)
+        zip_active = list(zip(bot_activation, pos_plays))
+        zip_active_sorted = sorted(zip_active, reverse=True)
+        # print(zip_active_sorted)
+        if self.verbose:
+            print(zip_active_sorted)
+        bot_plays = [x[1] for x in zip_active_sorted]
+        play_list = copy.copy(bot_plays)
+        if self.verbose:
+            print(f"{bot.name} wants to play: \n {bot_plays}")
+        bot_plays = cycle(bot_plays)
         # if that column is full, play the next highest amplitude
-        i = 0
         valid = False
-        while valid == False:
+        while not valid:
             # take input from player (which column)
-            plays = bot_plays[i]
-            print(f"{bot.name} plays {plays}")
-            i += 1
+            plays = next(bot_plays)
+            if self.verbose:
+                print(f"{bot.name} wants to play {plays}")
             # check if player's input is correct
             valid = True
-            # 2. columns must not be full
+            # 1. columns must not be full
             if "" not in list(self.game[plays]):
                 valid = False
-                print("This column is full.")
-                continue
+                if self.verbose:
+                    print("This column is full.")
+                self.show()
+                if self.verbose:
+                    print(play_list)
+                if self.verbose:
+                    print(bot_activation)
 
-            # depending on player, drop a character in the lowest empty row
-            play_col = list(self.game[plays])
 
-            done = False
-            i = -1
-            symbol = self.symbols[self.turn - 1]
-            while not done:
-                if play_col[i] == "":
-                    play_col[i] = symbol
-                    self.game[plays] = play_col
+        # depending on player, drop a character in the lowest empty row
+        play_col = list(self.game[plays])
+
+        done = False
+        i = -1
+        symbol = self.symbols[self.turn - 1]
+        while not done:
+            if play_col[i] == "":
+                play_col[i] = symbol
+                self.game[plays] = play_col
+                if self.verbose:
                     print(f"\nPlaced a {symbol} in column {plays}.\n")
-                    done = True
-                    return "play"
-                else:
-                    i -= 1
+                done = True
+                return "play"
+            else:
+                i -= 1
 
     def ai_vs_ai(self, bot_1, bot_2, slow=False):
         command = None
@@ -256,8 +276,11 @@ class ConnectFour:
             self.turn = next(self.turns)
 
         if hasattr(self, "winner"):
-            print(f"The winner is {self.winner}!")
+            if self.verbose:
+                print(f"The winner is {self.winner}!")
         elif self.status == "tie":
-            print(f"The game has ended in a tie!")
+            if self.verbose:
+                print(f"The game has ended in a tie!")
         else:
-            print(f"No winner yet.")
+            if self.verbose:
+                print(f"No winner yet.")
